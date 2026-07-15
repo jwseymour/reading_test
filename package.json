@@ -1,16 +1,22 @@
 {
-  "name": "nextjs",
+  "name": "perceptlab",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test lib/**/*.test.ts",
+    "test:watch": "tsx --test --watch lib/**/*.test.ts"
   },
   "dependencies": {
+    "@fontsource/opendyslexic": "^5.2.5",
+    "chart.js": "^4.5.1",
+    "idb": "^8.0.3",
     "next": "16.2.4",
     "react": "19.2.4",
+    "react-chartjs-2": "^5.3.1",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
@@ -21,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5"
   }
 }
