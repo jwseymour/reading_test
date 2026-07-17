@@ -4,16 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/", label: "Home" },
-  { href: "/symptoms", label: "Symptoms" },
-  { href: "/calibration", label: "Calibration" },
-  { href: "/pattern-glare", label: "Pattern glare" },
-  { href: "/reading", label: "Reading" },
-  { href: "/interventions", label: "Interventions" },
-  { href: "/binocular", label: "Binocular" },
-  { href: "/journal", label: "Journal" },
-  { href: "/analytics", label: "Analytics" },
-  { href: "/data", label: "Data" },
+  { href: "/assess", label: "Assess" },
+  { href: "/find", label: "Find what helps" },
+  { href: "/playground", label: "Playground" },
+  { href: "/insights", label: "Insights" },
 ] as const;
 
 export function AppNav() {
@@ -31,14 +25,14 @@ export function AppNav() {
         >
           PerceptLab
         </Link>
-        {LINKS.filter((l) => l.href !== "/").map((link) => {
+        {LINKS.map((link) => {
           const active =
             pathname === link.href || pathname.startsWith(`${link.href}/`);
           return (
             <Link
               key={link.href}
               href={link.href}
-              className={`rounded px-2 py-1 text-sm transition-colors ${
+              className={`rounded px-2.5 py-1 text-sm transition-colors ${
                 active
                   ? "bg-[var(--accent-soft)] text-[var(--ink)]"
                   : "text-[var(--muted)] hover:bg-[var(--surface-2)] hover:text-[var(--ink)]"
@@ -48,6 +42,12 @@ export function AppNav() {
             </Link>
           );
         })}
+        <Link
+          href="/disclaimer"
+          className="ml-auto text-xs text-[var(--muted)] underline"
+        >
+          Limits
+        </Link>
       </div>
     </nav>
   );

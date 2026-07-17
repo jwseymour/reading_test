@@ -362,7 +362,7 @@ export function Dashboard() {
             (n={bestPair.n})
           </p>
         )}
-        <Link href="/analytics/print" className="btn btn-primary inline-block">
+        <Link href="/insights/print" className="btn btn-primary inline-block">
           Open print / PDF summary
         </Link>
       </section>

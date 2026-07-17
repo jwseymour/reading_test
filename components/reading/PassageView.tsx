@@ -3,26 +3,27 @@
 import type { InterventionCondition, ReadingPassage } from "@/lib/types";
 import { overlayCssColour } from "@/lib/stimuli/overlays";
 import { DEFAULT_FONT_SIZE_PX } from "@/lib/content/fonts";
+import { passagePlainText } from "@/lib/reading/paperPassages";
 
 export function PassageView({
   passage,
-  currentLine,
   condition,
   rulerY,
   darkMode,
 }: {
   passage: ReadingPassage;
-  currentLine: number;
   condition?: InterventionCondition | null;
   rulerY?: number | null;
   darkMode?: boolean;
 }) {
   const fontFamily =
     condition?.fontFamily ?? "Georgia, 'Times New Roman', serif";
-  const lineSpacing = condition?.lineSpacingMultiplier ?? 1.15;
+  const lineSpacing = condition?.lineSpacingMultiplier ?? 1.45;
   const fontSizePx = condition?.fontSizePx ?? DEFAULT_FONT_SIZE_PX;
   const overlay =
-    condition?.type === "colorOverlay" || condition?.overlayHue != null
+    condition?.type === "colorOverlay" ||
+    condition?.type === "composite" ||
+    (condition?.overlayOpacity != null && condition.overlayOpacity > 0)
       ? {
           hue: condition.overlayHue ?? 0,
           saturation: condition.overlaySaturation ?? 0,
@@ -31,39 +32,46 @@ export function PassageView({
         }
       : null;
 
-  const inverted = darkMode || condition?.type === "darkMode";
+  const inverted =
+    darkMode || condition?.type === "darkMode" || !!condition?.invertContrast;
   const showRuler =
-    rulerY != null || condition?.type === "readingRuler";
+    condition?.type === "readingRuler" || !!condition?.useReadingRuler;
+  const paragraphs =
+    passage.paragraphs ??
+    (passage.lines
+      ? [passage.lines.map((l) => l.join(" ")).join(" ")]
+      : [passagePlainText(passage)]);
 
   return (
     <div
       className="relative overflow-hidden rounded border border-[var(--border)]"
       style={{
-        background: inverted ? "#111" : "#fff",
-        color: inverted ? "#eee" : "#111",
+        background: inverted ? "#111" : "#faf8f4",
+        color: inverted ? "#eee" : "#1a1a1a",
       }}
     >
-      <div
-        className="relative z-0 space-y-0 p-4 tracking-tight"
+      <article
+        className="relative z-0 max-w-none space-y-4 p-6 sm:p-8"
         style={{
           fontFamily,
           lineHeight: lineSpacing,
           fontSize: `${fontSizePx}px`,
         }}
       >
-        {passage.lines.map((line, i) => (
-          <p
-            key={i}
-            className={`${
-              i === currentLine
-                ? "outline outline-1 outline-dashed outline-sky-600/40"
-                : ""
-            } ${i < currentLine ? "opacity-40" : ""}`}
+        {passage.title && (
+          <h2
+            className="mb-2 font-semibold"
+            style={{ fontSize: `${fontSizePx * 1.15}px` }}
           >
-            {line.join(" ")}
+            {passage.title}
+          </h2>
+        )}
+        {paragraphs.map((para, i) => (
+          <p key={i} className="text-pretty">
+            {para}
           </p>
         ))}
-      </div>
+      </article>
       {overlay && overlay.opacity > 0 && (
         <div
           className="pointer-events-none absolute inset-0 z-10"

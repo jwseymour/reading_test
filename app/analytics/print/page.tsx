@@ -1,5 +1,5 @@
-import { ClinicalSummary } from "@/components/analytics/ClinicalSummary";
+import { redirect } from "next/navigation";
 
-export default function PrintSummaryPage() {
-  return <ClinicalSummary />;
+export default function LegacyPrintPage() {
+  redirect("/insights/print");
 }

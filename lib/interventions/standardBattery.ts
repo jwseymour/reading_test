@@ -12,7 +12,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "none",
     fontFamily: serif,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
     label: "Baseline · 16px serif",
   },
   {
@@ -20,7 +20,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "fontSize",
     fontFamily: serif,
     fontSizePx: 13,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
     label: "Small text · 13px",
   },
   {
@@ -28,7 +28,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "fontSize",
     fontFamily: serif,
     fontSizePx: 20,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
     label: "Large text · 20px",
   },
   {
@@ -36,7 +36,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "fontSize",
     fontFamily: serif,
     fontSizePx: 24,
-    lineSpacingMultiplier: 1.2,
+    lineSpacingMultiplier: 1.5,
     label: "X-large text · 24px",
   },
   {
@@ -44,7 +44,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "fontChange",
     fontFamily: openDyslexic,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.25,
+    lineSpacingMultiplier: 1.5,
     label: "OpenDyslexic · 16px",
   },
   {
@@ -52,7 +52,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "fontChange",
     fontFamily: atkinson,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.2,
+    lineSpacingMultiplier: 1.45,
     label: "Atkinson Hyperlegible · 16px",
   },
   {
@@ -68,7 +68,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "colorOverlay",
     fontFamily: serif,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
     overlayHue: 175,
     overlaySaturation: 45,
     overlayLightness: 72,
@@ -80,7 +80,7 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "colorOverlay",
     fontFamily: serif,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
     overlayHue: 42,
     overlaySaturation: 55,
     overlayLightness: 70,
@@ -92,7 +92,8 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "darkMode",
     fontFamily: serif,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
+    invertContrast: true,
     label: "Dark mode",
   },
   {
@@ -100,7 +101,8 @@ export const STANDARD_CONDITIONS: InterventionCondition[] = [
     type: "readingRuler",
     fontFamily: serif,
     fontSizePx: DEFAULT_FONT_SIZE_PX,
-    lineSpacingMultiplier: 1.15,
+    lineSpacingMultiplier: 1.45,
+    useReadingRuler: true,
     label: "Reading ruler",
   },
 ];

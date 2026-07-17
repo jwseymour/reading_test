@@ -51,6 +51,7 @@ export function generatePassage(opts: GenerateOptions = {}): ReadingPassage {
     lines,
     totalWords: lineCount * wordsPerLine,
     createdAt: new Date().toISOString(),
+    source: "legacy-wrrt",
   };
 }
 
@@ -71,7 +72,7 @@ export function lineHasNoImmediateRepeat(line: string[]): boolean {
 
 export function frequencySkew(passage: ReadingPassage): number {
   const counts = new Map<string, number>();
-  for (const line of passage.lines) {
+  for (const line of passage.lines ?? []) {
     for (const w of line) {
       counts.set(w, (counts.get(w) ?? 0) + 1);
     }

@@ -14,7 +14,11 @@ import type {
   SubjectiveOverlayRating,
 } from "@/lib/types";
 
-export function ConditionEditor() {
+export function ConditionEditor({
+  showPromote = false,
+}: {
+  showPromote?: boolean;
+}) {
   const { ensureSession } = useSessionMeta();
   const [hue, setHue] = useState(200);
   const [saturation, setSaturation] = useState(40);
@@ -199,6 +203,8 @@ export function ConditionEditor() {
               fontFamily: INTERVENTION_FONTS[fontIdx]!.family,
               fontSizePx,
               lineSpacingMultiplier: lineSpacing,
+              invertContrast: darkMode,
+              useReadingRuler: rulerOn,
               label: `${INTERVENTION_FONTS[fontIdx]!.label} ${fontSizePx}px · H${hue} A${opacity.toFixed(2)}${darkMode ? " dark" : ""}${rulerOn ? " ruler" : ""}`,
             };
             await dbApi.putCondition(condition);
@@ -217,6 +223,47 @@ export function ConditionEditor() {
         >
           Save subjective trial
         </button>
+        {showPromote && (
+          <button
+            type="button"
+            className="btn btn-secondary ml-2"
+            onClick={async () => {
+              const condition: InterventionCondition = {
+                id: createId(),
+                type: "composite",
+                overlayHue: hue,
+                overlaySaturation: saturation,
+                overlayLightness: lightness,
+                overlayOpacity: opacity,
+                fontFamily: INTERVENTION_FONTS[fontIdx]!.family,
+                fontSizePx,
+                lineSpacingMultiplier: lineSpacing,
+                invertContrast: darkMode,
+                useReadingRuler: rulerOn,
+                promotedFromPlayground: true,
+                label: `Playground · ${INTERVENTION_FONTS[fontIdx]!.label} ${fontSizePx}px`,
+              };
+              await dbApi.putCondition(condition);
+              const settings = await dbApi.getSettings();
+              const ids = [
+                ...(settings.promotedConditionIds ?? []).filter(
+                  (id) => id !== condition.id,
+                ),
+                condition.id,
+              ].slice(-5);
+              await dbApi.putSettings({
+                ...settings,
+                promotedConditionIds: ids,
+              });
+              setConditions(await dbApi.getAllConditions());
+              setMessage(
+                "Promoted into Find Stage 3 candidates (does not claim a win).",
+              );
+            }}
+          >
+            Promote setup into Find
+          </button>
+        )}
         {message && <p className="text-sm text-[var(--accent)]">{message}</p>}
       </section>
 

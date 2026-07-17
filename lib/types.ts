@@ -1,4 +1,4 @@
-/** PerceptLab data model — mirrors design doc §7 */
+/** PerceptLab data model — mirrors design doc §7 + UX redesign extensions */
 
 export type AmbientLighting = "dim" | "normal" | "bright" | "daylight";
 
@@ -40,7 +40,6 @@ export interface SymptomSurveyResponse {
   itemScores: Record<string, number>;
   totalScore: number;
   administeredAt: string;
-  /** Optional free-text trigger note attached to intake */
   triggerNote?: string;
   triggerTags?: string[];
 }
@@ -76,7 +75,8 @@ export type InterventionType =
   | "fontChange"
   | "fontSize"
   | "lineSpacing"
-  | "readingRuler";
+  | "readingRuler"
+  | "composite";
 
 export interface InterventionCondition {
   id: string;
@@ -86,10 +86,15 @@ export interface InterventionCondition {
   overlayLightness?: number;
   overlayOpacity?: number;
   fontFamily?: string;
-  /** CSS px size for reading text; default ~16 */
   fontSizePx?: number;
   lineSpacingMultiplier?: number;
   label: string;
+  /** Promoted from Playground into Find Stage 3 */
+  promotedFromPlayground?: boolean;
+  /** For composites that include dark mode */
+  invertContrast?: boolean;
+  /** For composites that include reading ruler */
+  useReadingRuler?: boolean;
 }
 
 export type SubjectiveOverlayRating = "better" | "worse" | "same";
@@ -104,11 +109,18 @@ export interface SubjectiveOverlayTrial {
   timestamp: string;
 }
 
+export type PassageSource = "builtin-paper" | "custom-paste" | "legacy-wrrt";
+
 export interface ReadingPassage {
   id: string;
-  lines: string[][];
+  /** Paragraphs of plain text (paper-style). Legacy WRRT used lines[][]. */
+  paragraphs?: string[];
+  /** @deprecated WRRT line grid — kept for old stored records */
+  lines?: string[][];
   totalWords: number;
   createdAt: string;
+  source?: PassageSource;
+  title?: string;
 }
 
 export interface ReadingTrial {
@@ -125,6 +137,9 @@ export interface ReadingTrial {
   selfReportedLineLosses: number;
   selfReportedDiscomfort: number;
   timestamp: string;
+  /** Optional comprehension score 0–1 */
+  comprehensionScore?: number;
+  purpose?: "baseline" | "find" | "playground" | "manual";
 }
 
 export type ConvergenceMethod =
@@ -161,9 +176,23 @@ export interface PhotoBlob {
   id: string;
   mimeType: string;
   createdAt: string;
-  /** Blob stored in IndexedDB; omitted from default JSON export */
   blob: Blob;
 }
+
+export type InterventionFamily =
+  | "fontSize"
+  | "font"
+  | "colorOverlay"
+  | "lineSpacing"
+  | "darkMode"
+  | "readingRuler";
+
+export type FindStage =
+  | "families"
+  | "within-family"
+  | "combine"
+  | "confirm"
+  | "complete";
 
 export interface ComparisonPhase {
   id: string;
@@ -172,6 +201,16 @@ export interface ComparisonPhase {
   startedAt: string;
   completedAt?: string;
   sessionOrderIndex: number;
+  /** Adaptive Find wizard state */
+  stage?: FindStage;
+  selectedFamilies?: InterventionFamily[];
+  recommendedFamilies?: InterventionFamily[];
+  sourceSignals?: string[];
+  familyWinners?: Partial<Record<InterventionFamily, string>>;
+  /** Current family being A/B tested */
+  activeFamily?: InterventionFamily;
+  compositeConditionIds?: string[];
+  confirmedProfileId?: string;
 }
 
 export interface AppSettings {
@@ -180,6 +219,7 @@ export interface AppSettings {
   activeComparisonPhaseId?: string;
   moduleBConsentSessionId?: string;
   lastNudgeAt?: string;
+  promotedConditionIds?: string[];
 }
 
 export type StoreName =

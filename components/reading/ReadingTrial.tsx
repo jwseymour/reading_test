@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PassageView } from "./PassageView";
-import { FIXED_PASSAGES } from "@/lib/reading/passages";
 import { createId } from "@/lib/id";
 import { dbApi } from "@/lib/db/client";
-import { orderForSession } from "@/lib/scheduling/latinSquare";
 import { useSessionMeta } from "@/lib/session/SessionMetaContext";
 import { useSafety } from "@/lib/session/SafetyContext";
-import { WRRT_INSPIRED } from "@/lib/content/disclaimers";
+import {
+  PAPER_PASSAGES,
+  createCustomPassage,
+  wordsInPassage,
+} from "@/lib/reading/paperPassages";
 import { STANDARD_CONDITIONS } from "@/lib/interventions/standardBattery";
 import type {
   InterventionCondition,
@@ -22,20 +24,32 @@ const BASELINE: InterventionCondition = {
   id: "condition-baseline-none",
   type: "none",
   fontSizePx: 16,
-  label: "Baseline (no intervention)",
+  lineSpacingMultiplier: 1.45,
+  label: "Baseline · 16px serif",
 };
+
+const COMPREHENSION = [
+  {
+    q: "Was this passage mainly about visual/perceptual topics, near-work methods, or something else?",
+    options: ["Visual / perceptual / reading comfort", "Unrelated topic", "Not sure"],
+    correct: 0,
+  },
+];
 
 export function ReadingTrialRunner({
   lockedConditionId,
   lockedPassageId,
   onTrialSaved,
   hideSetup = false,
+  purpose = "manual",
+  allowPaste = true,
 }: {
-  /** When set, skip condition picker and use this condition. */
   lockedConditionId?: string;
   lockedPassageId?: string;
   onTrialSaved?: (trial: ReadingTrialRecord) => void;
   hideSetup?: boolean;
+  purpose?: ReadingTrialRecord["purpose"];
+  allowPaste?: boolean;
 }) {
   const { ensureSession } = useSessionMeta();
   const { markSessionActivity, stopped, clearStop } = useSafety();
@@ -44,36 +58,24 @@ export function ReadingTrialRunner({
   const [conditionId, setConditionId] = useState(
     lockedConditionId ?? BASELINE.id,
   );
+  const [passages, setPassages] = useState<ReadingPassage[]>(PAPER_PASSAGES);
   const [passageId, setPassageId] = useState(
-    lockedPassageId ?? FIXED_PASSAGES[0]!.id,
+    lockedPassageId ?? PAPER_PASSAGES[0]!.id,
   );
-  const [passages, setPassages] = useState<ReadingPassage[]>(FIXED_PASSAGES);
-  const [currentLine, setCurrentLine] = useState(0);
-  const [lineTs, setLineTs] = useState<number[]>([]);
+  const [pasteText, setPasteText] = useState("");
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [discomfort, setDiscomfort] = useState(0);
   const [lineLosses, setLineLosses] = useState(0);
-  const [errors, setErrors] = useState(0);
+  const [compAnswer, setCompAnswer] = useState<number | null>(null);
   const [message, setMessage] = useState("");
-  const [scheduleHint, setScheduleHint] = useState("");
   const [rulerY, setRulerY] = useState<number | null>(null);
-  const [recording, setRecording] = useState(false);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
-    null,
-  );
 
   const phaseRef = useRef(phase);
-  const currentLineRef = useRef(0);
-  const advancingRef = useRef(false);
-  const passageRef = useRef<ReadingPassage | undefined>(undefined);
+  const finishingRef = useRef(false);
 
   useEffect(() => {
     phaseRef.current = phase;
   }, [phase]);
-
-  useEffect(() => {
-    currentLineRef.current = currentLine;
-  }, [currentLine]);
 
   useEffect(() => {
     if (lockedConditionId) setConditionId(lockedConditionId);
@@ -86,42 +88,22 @@ export function ReadingTrialRunner({
   useEffect(() => {
     (async () => {
       await dbApi.putCondition(BASELINE);
-      let stored = await dbApi.getAllPassages();
-      if (stored.length === 0) {
-        for (const p of FIXED_PASSAGES) {
-          await dbApi.putPassage(p);
-        }
-        stored = FIXED_PASSAGES;
+      for (const p of PAPER_PASSAGES) {
+        await dbApi.putPassage(p);
       }
-      setPassages(stored);
-      const conds = await dbApi.getAllConditions();
-      setConditions(conds);
-      const settings = await dbApi.getSettings();
-      if (!lockedConditionId && settings.activeComparisonPhaseId) {
-        const phaseRec = await dbApi.getComparisonPhase(
-          settings.activeComparisonPhaseId,
-        );
-        if (phaseRec && !phaseRec.completedAt) {
-          const order = orderForSession(
-            phaseRec.conditionIds,
-            phaseRec.sessionOrderIndex,
-          );
-          setScheduleHint(
-            `Latin-square order for this phase session: ${order
-              .map((id) => conds.find((c) => c.id === id)?.label ?? id)
-              .join(" → ")}`,
-          );
-          if (order[0]) setConditionId(order[0]);
-        }
-      }
+      const stored = await dbApi.getAllPassages();
+      const papers = stored.filter(
+        (p) => p.source === "builtin-paper" || p.source === "custom-paste",
+      );
+      setPassages(papers.length ? papers : PAPER_PASSAGES);
+      setConditions(await dbApi.getAllConditions());
     })();
-  }, [lockedConditionId]);
+  }, []);
 
   const passage = useMemo(
     () => passages.find((p) => p.id === passageId) ?? passages[0],
     [passages, passageId],
   );
-  passageRef.current = passage;
 
   const condition = useMemo(() => {
     const fromDb = conditions.find((c) => c.id === conditionId);
@@ -134,64 +116,39 @@ export function ReadingTrialRunner({
 
   const beginRun = useCallback(() => {
     clearStop();
-    setCurrentLine(0);
-    currentLineRef.current = 0;
-    setLineTs([]);
+    finishingRef.current = false;
     setStartedAt(Date.now());
     setDiscomfort(0);
     setLineLosses(0);
-    setErrors(0);
+    setCompAnswer(null);
     setPhase("running");
     markSessionActivity();
   }, [clearStop, markSessionActivity]);
 
-  const advanceLine = useCallback(() => {
+  const finishRun = useCallback(() => {
     if (phaseRef.current !== "running") return;
-    if (advancingRef.current) return;
-    advancingRef.current = true;
-
-    const p = passageRef.current;
-    const line = currentLineRef.current;
-    const nextLine = line + 1;
-    const now = Date.now();
-
-    setLineTs((prev) => [...prev, now]);
-    setCurrentLine(nextLine);
-    currentLineRef.current = nextLine;
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setPhase("post");
     markSessionActivity();
-
-    if (p && nextLine >= p.lines.length) {
-      setPhase("post");
-    }
-
-    window.setTimeout(() => {
-      advancingRef.current = false;
-    }, 200);
   }, [markSessionActivity]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== "Space" && e.code !== "Enter") return;
-      // Key-repeat while holding Space was skipping multiple lines
       if (e.repeat) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "TEXTAREA" || tag === "INPUT") return;
       e.preventDefault();
-
-      if (phaseRef.current === "ready") {
-        beginRun();
-        return;
-      }
-      if (phaseRef.current === "running") {
-        advanceLine();
-      }
+      if (phaseRef.current === "ready") beginRun();
+      else if (phaseRef.current === "running") finishRun();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [beginRun, advanceLine]);
+  }, [beginRun, finishRun]);
 
   useEffect(() => {
-    if (stopped && phase === "running") {
-      setPhase("post");
-    }
+    if (stopped && phase === "running") setPhase("post");
   }, [stopped, phase]);
 
   if (!passage) {
@@ -200,111 +157,119 @@ export function ReadingTrialRunner({
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-[var(--muted)]">{WRRT_INSPIRED}</p>
-      {scheduleHint && (
-        <p className="text-sm text-[var(--accent)]">{scheduleHint}</p>
-      )}
+      <p className="text-sm text-[var(--muted)]">
+        Continuous paper-style text — no line highlighting or greying (those
+        act like a reading ruler). Read naturally, then finish when done.
+        Built-in passages are best for comparable scores; pasted text is for
+        ecological practice.
+      </p>
 
       {phase === "setup" && !hideSetup && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            <span className="mb-1 block text-[var(--muted)]">Condition</span>
-            <select
-              className="input"
-              value={conditionId}
-              onChange={(e) => setConditionId(e.target.value)}
-              disabled={!!lockedConditionId}
-            >
-              {[BASELINE, ...conditions.filter((c) => c.id !== BASELINE.id)].map(
-                (c) => (
+        <div className="space-y-4">
+          {purpose !== "baseline" && (
+            <label className="block text-sm">
+              <span className="mb-1 block text-[var(--muted)]">Condition</span>
+              <select
+                className="input"
+                value={conditionId}
+                onChange={(e) => setConditionId(e.target.value)}
+                disabled={!!lockedConditionId}
+              >
+                {[
+                  BASELINE,
+                  ...conditions.filter((c) => c.id !== BASELINE.id),
+                ].map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.label}
-                    {c.fontSizePx ? ` · ${c.fontSizePx}px` : ""}
                   </option>
-                ),
-              )}
-            </select>
-          </label>
-          <label className="text-sm">
+                ))}
+              </select>
+            </label>
+          )}
+          <label className="block text-sm">
             <span className="mb-1 block text-[var(--muted)]">Passage</span>
             <select
               className="input"
               value={passageId}
               onChange={(e) => setPassageId(e.target.value)}
+              disabled={!!lockedPassageId}
             >
               {passages.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.id} ({p.totalWords} words)
+                  {p.source === "custom-paste" ? "Custom · " : ""}
+                  {p.title ?? p.id} ({wordsInPassage(p)} words)
                 </option>
               ))}
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm sm:col-span-2">
-            <input
-              type="checkbox"
-              checked={recording}
-              onChange={async (e) => {
-                const on = e.target.checked;
-                if (!on) {
-                  mediaRecorder?.stop();
-                  setMediaRecorder(null);
-                  setRecording(false);
-                  return;
-                }
-                try {
-                  const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                  });
-                  const rec = new MediaRecorder(stream);
-                  const chunks: BlobPart[] = [];
-                  rec.ondataavailable = (ev) => chunks.push(ev.data);
-                  rec.onstop = () => {
-                    stream.getTracks().forEach((t) => t.stop());
-                    void new Blob(chunks, { type: "audio/webm" });
-                  };
-                  rec.start();
-                  setMediaRecorder(rec);
-                  setRecording(true);
-                } catch {
-                  setMessage(
-                    "Microphone permission denied — continuing silent.",
+          {allowPaste && (
+            <div className="space-y-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-[var(--muted)]">
+                  Or paste your own text (research paper excerpt, etc.)
+                </span>
+                <textarea
+                  className="input min-h-[8rem] font-mono text-xs"
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste plain text. Stored locally only."
+                />
+              </label>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={pasteText.trim().length < 40}
+                onClick={async () => {
+                  const custom = createCustomPassage(pasteText);
+                  await dbApi.putPassage(custom);
+                  const all = await dbApi.getAllPassages();
+                  setPassages(
+                    all.filter(
+                      (p) =>
+                        p.source === "builtin-paper" ||
+                        p.source === "custom-paste",
+                    ),
                   );
-                  setRecording(false);
-                }
-              }}
-            />
-            Optional read-aloud recording (local only; silent mode is default)
-          </label>
+                  setPassageId(custom.id);
+                  setPasteText("");
+                  setMessage("Custom passage saved locally.");
+                }}
+              >
+                Save pasted passage
+              </button>
+            </div>
+          )}
           <button
             type="button"
-            className="btn btn-primary sm:col-span-2"
+            className="btn btn-primary"
             onClick={() => {
               clearStop();
-              setCurrentLine(0);
-              currentLineRef.current = 0;
-              setLineTs([]);
-              setStartedAt(null);
               setPhase("ready");
             }}
           >
             Continue to trial
           </button>
+          {message && <p className="text-sm text-[var(--accent)]">{message}</p>}
         </div>
       )}
 
       {(phase === "ready" || phase === "running" || phase === "post") && (
         <div
           onMouseMove={(e) => {
-            if (condition?.type !== "readingRuler") return;
+            const c = purpose === "baseline" ? BASELINE : condition;
+            if (c?.type !== "readingRuler" && !c?.useReadingRuler) return;
             const rect = e.currentTarget.getBoundingClientRect();
             setRulerY(e.clientY - rect.top);
           }}
         >
           <PassageView
             passage={passage}
-            currentLine={Math.min(currentLine, passage.lines.length - 1)}
-            condition={condition}
-            rulerY={condition?.type === "readingRuler" ? rulerY : null}
+            condition={purpose === "baseline" ? BASELINE : condition}
+            rulerY={
+              condition?.type === "readingRuler" || condition?.useReadingRuler
+                ? rulerY
+                : null
+            }
           />
         </div>
       )}
@@ -313,8 +278,8 @@ export function ReadingTrialRunner({
         <div className="flex flex-wrap items-center gap-3 text-sm">
           <p>
             Press <kbd className="rounded border px-1">Space</kbd> or{" "}
-            <kbd className="rounded border px-1">Enter</kbd> once to start.
-            After that, press again only when you finish each line.
+            <kbd className="rounded border px-1">Enter</kbd> to start. Press
+            again when you finish the whole passage.
           </p>
           <button type="button" className="btn btn-primary" onClick={beginRun}>
             Start
@@ -323,14 +288,12 @@ export function ReadingTrialRunner({
       )}
 
       {phase === "running" && (
-        <div className="flex flex-wrap items-center gap-3 text-sm text-[var(--muted)]">
-          <span>
-            Line {Math.min(currentLine + 1, passage.lines.length)} /{" "}
-            {passage.lines.length} — press Space/Enter when this line is done
-            (hold will not skip).
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <span className="text-[var(--muted)]">
+            Reading… press Space/Enter or Finish when done.
           </span>
-          <button type="button" className="btn btn-secondary" onClick={advanceLine}>
-            Next line
+          <button type="button" className="btn btn-primary" onClick={finishRun}>
+            Finish passage
           </button>
         </div>
       )}
@@ -349,7 +312,7 @@ export function ReadingTrialRunner({
             />
           </label>
           <label className="block text-sm">
-            Subjective line losses
+            Times you felt you lost your place
             <input
               type="number"
               min={0}
@@ -358,16 +321,27 @@ export function ReadingTrialRunner({
               onChange={(e) => setLineLosses(Number(e.target.value))}
             />
           </label>
-          <label className="block text-sm">
-            Estimated errors (self-count)
-            <input
-              type="number"
-              min={0}
-              className="input"
-              value={errors}
-              onChange={(e) => setErrors(Number(e.target.value))}
-            />
-          </label>
+          {passage.source === "builtin-paper" && (
+            <fieldset className="text-sm">
+              <legend className="mb-1 text-[var(--muted)]">
+                Quick comprehension (deters skimming)
+              </legend>
+              <p className="mb-2">{COMPREHENSION[0]!.q}</p>
+              <div className="flex flex-col gap-1">
+                {COMPREHENSION[0]!.options.map((opt, i) => (
+                  <label key={opt} className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      name="comp"
+                      checked={compAnswer === i}
+                      onChange={() => setCompAnswer(i)}
+                    />
+                    {opt}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <button
             type="button"
             className="btn btn-primary"
@@ -376,38 +350,37 @@ export function ReadingTrialRunner({
               const end = Date.now();
               const start = startedAt ?? end;
               const timeTakenMs = Math.max(1, end - start);
-              const completedWords = passage.lines
-                .slice(0, currentLine)
-                .reduce((n, line) => n + line.length, 0);
-              const correctWordsRead = Math.max(0, completedWords - errors);
-              const cwpm = (correctWordsRead / timeTakenMs) * 60_000;
-              const perLineTimestampsMs: number[] = [];
-              let prev = start;
-              for (const t of lineTs) {
-                perLineTimestampsMs.push(t - prev);
-                prev = t;
-              }
+              const totalWords = wordsInPassage(passage);
+              const cwpm = (totalWords / timeTakenMs) * 60_000;
+              const comprehensionScore =
+                compAnswer == null
+                  ? undefined
+                  : compAnswer === COMPREHENSION[0]!.correct
+                    ? 1
+                    : 0;
               const record: ReadingTrialRecord = {
                 id: createId(),
                 sessionId: session.id,
                 passageId: passage.id,
-                conditionId: condition?.id ?? BASELINE.id,
-                correctWordsRead,
-                totalWordsInPassage: passage.totalWords,
-                errorCount: errors,
+                conditionId:
+                  purpose === "baseline"
+                    ? BASELINE.id
+                    : (condition?.id ?? BASELINE.id),
+                correctWordsRead: totalWords,
+                totalWordsInPassage: totalWords,
+                errorCount: 0,
                 timeTakenMs,
                 correctWordsPerMinute: cwpm,
-                perLineTimestampsMs,
+                perLineTimestampsMs: [],
                 selfReportedLineLosses: lineLosses,
                 selfReportedDiscomfort: discomfort,
                 timestamp: new Date().toISOString(),
+                comprehensionScore,
+                purpose,
               };
               await dbApi.putReadingTrial(record);
-              mediaRecorder?.stop();
-              setMediaRecorder(null);
-              setRecording(false);
               setMessage(
-                `Saved · ${cwpm.toFixed(1)} cwpm · ${correctWordsRead} words`,
+                `Saved · ${cwpm.toFixed(1)} cwpm · discomfort ${discomfort}`,
               );
               setPhase("done");
               onTrialSaved?.(record);
